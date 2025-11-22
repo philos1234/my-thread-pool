@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MyThreadPool implements Executor {
 
     private final BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
-    private volatile boolean shutdown;
+    private final AtomicBoolean shutdown = new AtomicBoolean(false);
     private final Thread[] threads;
     private final AtomicBoolean initialized = new AtomicBoolean(false);
     private static final Runnable LAST_TASK = () -> {
@@ -31,7 +31,7 @@ public class MyThreadPool implements Executor {
     }
 
     private void run() {
-        while (!shutdown || !queue.isEmpty()) {
+        while (true) {
             Runnable task = null;
             try {
                 task = queue.take();
@@ -60,18 +60,25 @@ public class MyThreadPool implements Executor {
                 t.start();
             }
         }
-        if (shutdown) {
+
+        if (shutdown.get()) {
             throw new RejectedExecutionException();
         }
 
         queue.add(command);
+
+        // 만일 이미 shutdown 되어 있다면 제거
+        if (shutdown.get()) {
+            queue.remove(command);
+            throw new RejectedExecutionException();
+        }
     }
 
-    // 더 이상 받지 않고 남아 있는 것만 처리
-    public void shutdown() throws InterruptedException {
-        shutdown = true;
-        for (int i = 0; i < threads.length; i++) {
-            queue.add(LAST_TASK);
+    public void shutdown() {
+        if (shutdown.compareAndSet(false, true)) {
+            for (int i = 0; i < threads.length; i++) {
+                queue.add(LAST_TASK);
+            }
         }
 
         for (Thread t : threads) {
