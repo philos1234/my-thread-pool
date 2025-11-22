@@ -2,8 +2,6 @@ package theadpool;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -22,37 +20,36 @@ public class MyThreadPool implements Executor {
     private volatile boolean shutdown;
     private final Thread[] threads;
     private final AtomicBoolean initialized = new AtomicBoolean(false);
+    private static final Runnable LAST_TASK = () -> {
+    };
 
     public MyThreadPool(int threadNums) {
         this.threads = new Thread[threadNums];
         for (int i = 0; i < threadNums; i++) {
-            threads[i] = new Thread(() -> {
-                while (!shutdown) {
-                    Runnable task = null;
-                    try {
-                        task = queue.take();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
+            threads[i] = new Thread(this::run);
+        }
+    }
 
-                    if (task != null) {
-                        try {
-                            task.run();
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    }
+    private void run() {
+        while (!shutdown || !queue.isEmpty()) {
+            Runnable task = null;
+            try {
+                task = queue.take();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+            if (task != null) {
+                if (task == LAST_TASK) {
+                    return;
                 }
 
-                while (!queue.isEmpty()) {
-                    Runnable task = queue.poll();
-                    try {
-                        task.run();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+                try {
+                    task.run();
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-            });
+            }
         }
     }
 
@@ -73,11 +70,10 @@ public class MyThreadPool implements Executor {
     // 더 이상 받지 않고 남아 있는 것만 처리
     public void shutdown() throws InterruptedException {
         shutdown = true;
-
-        for (Thread t : threads) {
-            t.join();
-            t.interrupt();
+        for (int i = 0; i < threads.length; i++) {
+            queue.add(LAST_TASK);
         }
+
         for (Thread t : threads) {
             while (t.isAlive()) {
                 try {
