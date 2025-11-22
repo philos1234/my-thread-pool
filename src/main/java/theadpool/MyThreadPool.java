@@ -1,28 +1,38 @@
 package theadpool;
 
+import org.jetbrains.annotations.NotNull;
+
+import java.util.Arrays;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * simple thread pool
+ * 1. initialized with thread pool size
+ * 2. shutdown
+ * 3. execute task
+ */
 public class MyThreadPool implements Executor {
 
     private final BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
-    private volatile Boolean isShutDown;
+    private volatile boolean shutdown;
     private final Thread[] threads;
 
-    private final AtomicBoolean isStarted = new AtomicBoolean();
+    private final AtomicBoolean initialized = new AtomicBoolean();
 
     public MyThreadPool(int threadNums) {
         this.threads = new Thread[threadNums];
         for (int i = 0; i < threadNums; i++) {
             threads[i] = new Thread(() -> {
-                while (!isShutDown) {
+                while (!shutdown) {
                     Runnable task = null;
                     try {
                         task = queue.take();
-                    } catch (InterruptedException ignored) {
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
                     }
 
                     if (task != null) {
@@ -36,18 +46,19 @@ public class MyThreadPool implements Executor {
             });
         }
 
-        isStarted.set(true);
+        Arrays.stream(threads).forEach(Thread::start);
+        initialized.set(true);
     }
 
     @Override
-    public void execute(Runnable command) {
-        if (isStarted.compareAndSet(false, true)) {
+    public void execute(@NotNull Runnable command) {
+        if (initialized.compareAndSet(false, true)) {
             for (Thread t : threads) {
                 t.start();
             }
         }
 
-        if (isShutDown) {
+        if (shutdown) {
             throw new RejectedExecutionException();
         }
 
@@ -55,7 +66,7 @@ public class MyThreadPool implements Executor {
     }
 
     public void shutdown() {
-        isShutDown = true;
+        shutdown = true;
         for (Thread t : threads) {
             t.interrupt();
         }
