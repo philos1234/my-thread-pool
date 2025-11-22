@@ -2,6 +2,8 @@ package theadpool;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -19,7 +21,6 @@ public class MyThreadPool implements Executor {
     private final BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
     private volatile boolean shutdown;
     private final Thread[] threads;
-
     private final AtomicBoolean initialized = new AtomicBoolean(false);
 
     public MyThreadPool(int threadNums) {
@@ -42,6 +43,15 @@ public class MyThreadPool implements Executor {
                         }
                     }
                 }
+
+                while (!queue.isEmpty()) {
+                    Runnable task = queue.poll();
+                    try {
+                        task.run();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
             });
         }
     }
@@ -60,12 +70,14 @@ public class MyThreadPool implements Executor {
         queue.add(command);
     }
 
-    public void shutdown() {
+    // 더 이상 받지 않고 남아 있는 것만 처리
+    public void shutdown() throws InterruptedException {
         shutdown = true;
+
         for (Thread t : threads) {
+            t.join();
             t.interrupt();
         }
-
         for (Thread t : threads) {
             while (t.isAlive()) {
                 try {

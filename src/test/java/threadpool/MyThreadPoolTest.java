@@ -42,10 +42,12 @@ public class MyThreadPoolTest {
             MyThreadPool sut = new MyThreadPool(2);
             CountDownLatch latch = new CountDownLatch(5);
 
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < 5; i++) {
+                int finalI = i;
                 sut.execute(() -> {
                     try {
-                        Thread.sleep(100);
+                        Thread.sleep(1000);
+                        System.out.printf("task %d has done\n", finalI);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
@@ -55,6 +57,7 @@ public class MyThreadPoolTest {
 
             }
 
+            sut.shutdown();
             latch.await();
         }
     }
