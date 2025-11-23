@@ -20,8 +20,7 @@ public class MyThreadPool implements Executor {
     private final AtomicBoolean shutdown = new AtomicBoolean(false);
     private final Thread[] threads;
     private final AtomicBoolean initialized = new AtomicBoolean(false);
-    private static final Runnable LAST_TASK = () -> {
-    };
+    private static final Runnable LAST_TASK = () -> {};
 
     public MyThreadPool(int threadNums) {
         this.threads = new Thread[threadNums];
