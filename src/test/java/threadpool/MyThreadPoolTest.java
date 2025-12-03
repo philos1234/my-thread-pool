@@ -35,6 +35,29 @@ public class MyThreadPoolTest {
 
             latch.await();
         }
+
+        @DisplayName("task queue 가 꽉 차 있으면 maxThreadNums 까지 thread 증가")
+        @Test
+        public void increase_thread_pool_size_up_to_maxThreadNums_if_queue_size_max() throws InterruptedException {
+            MyThreadPool sut = new MyThreadPool(1, 3, 1);
+            CountDownLatch latch = new CountDownLatch(4);
+
+            for (int i = 0; i < 3; i++) {
+                sut.execute(() -> {
+                    latch.countDown();
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            }
+
+            Assertions.assertEquals(3, sut.getWorkerSize());
+
+            latch.countDown();
+            latch.await();
+        }
     }
 
     @Nested
@@ -44,11 +67,22 @@ public class MyThreadPoolTest {
         @Test
         public void wait_until_queue_drains() throws InterruptedException {
             MyThreadPool sut = new MyThreadPool(2);
+            CountDownLatch latch = new CountDownLatch(4);
             for (int i = 0; i < 5; i++) {
-                sut.execute(task(i));
+                sut.execute(
+                        () -> {
+                            try {
+                                Thread.sleep(10);
+                                latch.countDown();
+                            } catch (InterruptedException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                );
             }
 
             sut.shutdown();
+            Assertions.assertEquals(0, latch.getCount());
         }
 
         @DisplayName("shut down 과 execute 동시 발생하는 케이스, 큐에 넣은 task를 꺼내고 취소한다")
@@ -61,7 +95,15 @@ public class MyThreadPoolTest {
             Thread executeThread = new Thread(() -> {
                 try {
                     cb.await(); // 동기화 지점
-                    sut.execute(task(1));
+                    sut.execute(
+                            () -> {
+                                try {
+                                    Thread.sleep(1000);
+                                } catch (InterruptedException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            }
+                    );
                 } catch (Exception e) {
                     executeException.set(e);
                 }
@@ -84,18 +126,6 @@ public class MyThreadPoolTest {
                 Assertions.assertInstanceOf(RejectedExecutionException.class,
                         executeException.get());
             }
-        }
-
-
-        private Runnable task(int taskNum) {
-            return () -> {
-                try {
-                    Thread.sleep(1000);
-                    System.out.printf("task %d has done\n", taskNum);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            };
         }
     }
 }
