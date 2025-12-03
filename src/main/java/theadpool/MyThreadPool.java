@@ -2,15 +2,13 @@ package theadpool;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Executor;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantLock;
 
 //TODO idle time에 따라 thread 감소
 public class MyThreadPool implements Executor {
@@ -27,27 +25,29 @@ public class MyThreadPool implements Executor {
     private static final Runnable LAST_TASK = () -> {
     };
 
-    private final int maxThreadNums;
+    private final int corePoolSize;
+    private final int maxPoolSize;
     private final AtomicInteger currentWorkerNums;
 
-    public MyThreadPool(int corePoolSize) {
-        this(corePoolSize, corePoolSize, Integer.MAX_VALUE);
-    }
+    private final long keepAliveTimeMillis;
 
-    public MyThreadPool(int corePoolSize, int maxThreadNums) {
-        this(corePoolSize, maxThreadNums, Integer.MAX_VALUE);
-    }
-
-    public MyThreadPool(int corePoolSize, int maxWorkerNums, int queueSize) {
-        if (corePoolSize > maxWorkerNums) {
-            throw new IllegalArgumentException("maxWorkerNums cannot exceed threadNums");
+    public MyThreadPool(int corePoolSize, int maxPoolSize, int queueSize, long keepAliveTime, TimeUnit unit) {
+        if (corePoolSize > maxPoolSize) {
+            throw new IllegalArgumentException("maxPoolSize cannot exceed threadNums");
         }
+
         if (queueSize < 0) {
             throw new IllegalArgumentException("invalid queue size");
         }
 
+        if (keepAliveTime < 0) {
+            throw new IllegalArgumentException("invalid queue size");
+        }
+
+        this.corePoolSize = corePoolSize;
+        this.keepAliveTimeMillis = unit.toMillis(keepAliveTime);
         this.queue = new LinkedBlockingQueue<>(queueSize);
-        this.maxThreadNums = maxWorkerNums;
+        this.maxPoolSize = maxPoolSize;
         this.workerThreads = new HashSet<>(corePoolSize);
         for (int i = 0; i < corePoolSize; i++) {
             workerThreads.add(newThread());
@@ -60,7 +60,7 @@ public class MyThreadPool implements Executor {
             while (true) {
                 Runnable task = null;
                 try {
-                    task = queue.take();
+                    task = queue.poll(keepAliveTimeMillis, TimeUnit.MILLISECONDS);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -74,6 +74,13 @@ public class MyThreadPool implements Executor {
                         task.run();
                     } catch (Exception e) {
                         e.printStackTrace();
+                    }
+                } else {
+                    int current = currentWorkerNums.get();
+                    if (current > corePoolSize) {
+                        if (currentWorkerNums.compareAndSet(current, current - 1)) {
+                            return;
+                        }
                     }
                 }
             }
@@ -112,7 +119,7 @@ public class MyThreadPool implements Executor {
 
         while (!queue.offer(command)) {
             int current = currentWorkerNums.get();
-            if (current >= maxThreadNums) {
+            if (current >= maxPoolSize) {
                 throw new RejectedExecutionException("Queue is full and thread pool is at maximum size");
             }
 
@@ -150,5 +157,44 @@ public class MyThreadPool implements Executor {
 
     public int getWorkerSize() {
         return currentWorkerNums.get();
+    }
+
+
+    public static class Builder {
+        public Builder() {}
+
+        private int corePoolSize;
+        private int maxPoolSize = Integer.MAX_VALUE;
+        private int queueSize = Integer.MAX_VALUE;
+        private Duration duration;
+
+        public Builder corePoolSize(int corePoolSize) {
+            this.corePoolSize = corePoolSize;
+            return this;
+        }
+
+        public Builder maxPoolSize(int maxPoolSize) {
+            this.maxPoolSize = maxPoolSize;
+            return this;
+        }
+
+        public Builder queueSize(int maxQueueSize) {
+            this.queueSize = maxQueueSize;
+            return this;
+        }
+
+        public Builder keepAliveDuration(Duration duration) {
+            this.duration = duration;
+            return this;
+        }
+
+        public MyThreadPool build() {
+            return new MyThreadPool(corePoolSize, maxPoolSize, queueSize, duration.get(ChronoUnit.SECONDS) * 1000, TimeUnit.MILLISECONDS);
+        }
+    }
+
+
+    public static Builder builder() {
+        return new Builder();
     }
 }
