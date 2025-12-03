@@ -24,12 +24,8 @@ public class MyThreadPool implements Executor {
     /**
      * shut down 시 활용
      */
-    private static final Runnable LAST_TASK = () -> {};
-
-    /**
-     * worker thread 상태에 접근하는 경우 사용하는 lock
-     */
-    private final ReentrantLock mainLock = new ReentrantLock();
+    private static final Runnable LAST_TASK = () -> {
+    };
 
     private final int maxThreadNums;
     private final AtomicInteger currentWorkerNums;

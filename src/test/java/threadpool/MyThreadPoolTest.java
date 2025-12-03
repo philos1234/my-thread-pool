@@ -65,7 +65,7 @@ public class MyThreadPoolTest {
 
         @DisplayName("task queue 의 모든 task 가 소진될 때 까지 대기")
         @Test
-        public void wait_until_queue_drains() throws InterruptedException {
+        public void wait_until_queue_drains() {
             MyThreadPool sut = new MyThreadPool(2);
             CountDownLatch latch = new CountDownLatch(4);
             for (int i = 0; i < 5; i++) {
