@@ -4,19 +4,17 @@ import org.jetbrains.annotations.NotNull;
 
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-//TODO idle time에 따라 thread 감소
 public class MyThreadPool implements Executor {
 
     private final BlockingQueue<Runnable> queue;
 
     private final AtomicBoolean shutdown = new AtomicBoolean(false);
-    private final Set<Thread> workerThreads;
+    private final Map<Thread, Boolean> workerThreads;
     private final AtomicBoolean initialized = new AtomicBoolean(false);
 
     /**
@@ -48,9 +46,10 @@ public class MyThreadPool implements Executor {
         this.keepAliveTimeMillis = unit.toMillis(keepAliveTime);
         this.queue = new LinkedBlockingQueue<>(queueSize);
         this.maxPoolSize = maxPoolSize;
-        this.workerThreads = new HashSet<>(corePoolSize);
+        this.workerThreads = new ConcurrentHashMap<>(corePoolSize);
+
         for (int i = 0; i < corePoolSize; i++) {
-            workerThreads.add(newThread());
+            workerThreads.put(newThread(), Boolean.TRUE);
         }
         this.currentWorkerNums = new AtomicInteger(workerThreads.size());
     }
@@ -79,6 +78,7 @@ public class MyThreadPool implements Executor {
                     int current = currentWorkerNums.get();
                     if (current > corePoolSize) {
                         if (currentWorkerNums.compareAndSet(current, current - 1)) {
+                            workerThreads.remove(Thread.currentThread());
                             return;
                         }
                     }
@@ -91,7 +91,7 @@ public class MyThreadPool implements Executor {
     @Override
     public void execute(@NotNull Runnable command) {
         if (initialized.compareAndSet(false, true)) {
-            for (Thread t : workerThreads) {
+            for (Thread t : workerThreads.keySet()) {
                 t.start();
             }
         }
@@ -127,7 +127,7 @@ public class MyThreadPool implements Executor {
                 try {
                     Thread thread = newThread();
                     thread.start();
-                    workerThreads.add(thread);
+                    workerThreads.put(thread, Boolean.TRUE);
                 } catch (Exception e) {
                     currentWorkerNums.decrementAndGet();
                     throw new RejectedExecutionException(e);
@@ -144,7 +144,7 @@ public class MyThreadPool implements Executor {
             }
         }
 
-        for (Thread t : workerThreads) {
+        for (Thread t : workerThreads.keySet()) {
             while (t.isAlive()) {
                 try {
                     t.join();
@@ -161,7 +161,8 @@ public class MyThreadPool implements Executor {
 
 
     public static class Builder {
-        public Builder() {}
+        public Builder() {
+        }
 
         private int corePoolSize;
         private int maxPoolSize = Integer.MAX_VALUE;
